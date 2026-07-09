@@ -52,6 +52,7 @@ class SegmentationModel @Inject constructor(
             }.onFailure { e ->
                 throw e
             }
+            Unit
         }
     }
 
@@ -87,9 +88,9 @@ class SegmentationModel @Inject constructor(
 
             val inputTensor = OnnxTensor.createTensor(onnxManager.environment, buffer, shape)
 
-            var results: Map<String, OnnxTensor>? = null
+            var results: ONNXRuntimeManager.InferenceOutputs? = null
             try {
-                results = onnxManager.runInference(sess, mapOf(inputName to inputTensor))
+                results = onnxManager.runInferenceSync(sess, mapOf(inputName to inputTensor))
             } catch (e: Exception) {
                 // If [1, samples] fails, try [1, 1, samples]
                 inputTensor.close()
@@ -99,7 +100,7 @@ class SegmentationModel @Inject constructor(
                 val shape2 = longArrayOf(1, 1, chunk.size.toLong())
                 val tensor2 = OnnxTensor.createTensor(onnxManager.environment, buffer2, shape2)
                 try {
-                    results = onnxManager.runInference(sess, mapOf(inputName to tensor2))
+                    results = onnxManager.runInferenceSync(sess, mapOf(inputName to tensor2))
                 } catch (e2: Exception) {
                     Log.e(TAG, "Inference failed with both shapes", e2)
                 }
@@ -188,7 +189,7 @@ class SegmentationModel @Inject constructor(
                 }
             }
 
-            results.values.forEach { it.close() }
+            results.close()
             offset += STEP_SAMPLES
         }
     }

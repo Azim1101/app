@@ -47,6 +47,7 @@ class VADModel @Inject constructor(
             }.onFailure { e ->
                 throw e
             }
+            Unit
         }
     }
 
@@ -128,7 +129,7 @@ class VADModel @Inject constructor(
             "c" to cTensor
         )
 
-        val results = onnxManager.runInference(sess, inputs)
+        val results = onnxManager.runInferenceSync(sess, inputs)
 
         val score = try {
             val outputKey = results.keys.firstOrNull() ?: return 0f
@@ -154,7 +155,7 @@ class VADModel @Inject constructor(
             Log.w(TAG, "Failed to update VAD states", e)
         }
 
-        results.values.forEach { it.close() }
+        results.close()
         inputTensor.close()
         srTensor.close()
         hTensor.close()

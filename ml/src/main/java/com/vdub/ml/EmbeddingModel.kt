@@ -121,7 +121,7 @@ class EmbeddingModel @Inject constructor(
             }
         }
 
-        results.values.forEach { it.close() }
+        results.close()
 
         Log.d(TAG, "Generated embedding: dim=${embedding.size}, norm=${String.format("%.3f", norm)}")
         embedding

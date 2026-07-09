@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -206,7 +207,7 @@ class ModelDownloader @Inject constructor(
                     var totalRead = existingBytes
 
                     while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                        ensureActive()
+                        currentCoroutineContext().ensureActive()
 
                         raf.write(buffer, 0, bytesRead)
                         totalRead += bytesRead

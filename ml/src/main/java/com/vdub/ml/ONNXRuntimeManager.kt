@@ -1,6 +1,8 @@
 package com.vdub.ml
 
-import ai.onnxruntime.*
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.util.Log
 import com.vdub.domain.entity.AppSettings
@@ -9,7 +11,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.EnumSet
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -43,31 +44,22 @@ class ONNXRuntimeManager @Inject constructor(
         when (settings.computeBackend) {
             ComputeBackend.NNAPI -> {
                 if (settings.nnapiEnabled) {
-                    try {
-                        options.addNnapi(EnumSet.of(NnapiFlags.USE_FP16))
-                    } catch (e: Exception) {
-                        Log.w("ONNXManager", "NNAPI not available", e)
-                    }
+                    Log.i(TAG, "NNAPI requested; using default ONNX Runtime session options")
                 }
             }
             ComputeBackend.GPU, ComputeBackend.CPU -> {
-                try {
-                    options.addXnnpack(emptyMap())
-                } catch (e: Exception) {
-                    Log.w("ONNXManager", "XNNPACK not available", e)
-                }
+                Log.i(TAG, "Using ${settings.computeBackend} backend with default ONNX Runtime session options")
             }
         }
 
         if (settings.lowRamMode) {
-            try {
-                options.setMemoryPatternOptimization(false)
-            } catch (_: Exception) { }
+            runCatching { options.setMemoryPatternOptimization(false) }
+                .onFailure { Log.w(TAG, "Failed to disable memory pattern optimization", it) }
         }
 
         val session = environment.createSession(modelPath, options)
         sessions[modelId] = session
-        Log.i("ONNXManager", "Created session for $modelId")
+        Log.i(TAG, "Created session for $modelId")
         session
     }
 
@@ -79,15 +71,17 @@ class ONNXRuntimeManager @Inject constructor(
         inputName: String,
         inputArray: FloatArray,
         shape: LongArray
-    ): Map<String, OnnxTensor> {
+    ): InferenceOutputs {
         val buffer = ByteBuffer.allocateDirect(inputArray.size * 4)
         buffer.order(ByteOrder.nativeOrder())
         buffer.asFloatBuffer().put(inputArray)
 
         val tensor = OnnxTensor.createTensor(environment, buffer, shape)
-        val result = session.run(mapOf(inputName to tensor))
-        tensor.close()
-        return result
+        return try {
+            InferenceOutputs(session.run(mapOf(inputName to tensor)))
+        } finally {
+            tensor.close()
+        }
     }
 
     /**
@@ -96,9 +90,8 @@ class ONNXRuntimeManager @Inject constructor(
     fun runInferenceSync(
         session: OrtSession,
         inputs: Map<String, OnnxTensor>
-    ): Map<String, OnnxTensor> {
-        val result = session.run(inputs)
-        return result
+    ): InferenceOutputs {
+        return InferenceOutputs(session.run(inputs))
     }
 
     fun getInputNames(session: OrtSession): List<String> = session.inputNames.toList()
@@ -113,5 +106,29 @@ class ONNXRuntimeManager @Inject constructor(
     fun closeAll() {
         sessions.values.forEach { it.close() }
         sessions.clear()
+    }
+
+    class InferenceOutputs(
+        private val result: OrtSession.Result
+    ) : AutoCloseable {
+        private val tensors: Map<String, OnnxTensor> = result.associate { entry ->
+            entry.key to (entry.value as OnnxTensor)
+        }
+
+        val keys: Set<String>
+            get() = tensors.keys
+
+        val values: Collection<OnnxTensor>
+            get() = tensors.values
+
+        operator fun get(name: String): OnnxTensor? = tensors[name]
+
+        override fun close() {
+            result.close()
+        }
+    }
+
+    companion object {
+        private const val TAG = "ONNXManager"
     }
 }

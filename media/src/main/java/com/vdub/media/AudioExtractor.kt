@@ -30,7 +30,7 @@ class AudioExtractor @Inject constructor(
         sampleRate: Int = 16000,
         channels: Int = 1
     ): Result<String> {
-        val outputFile = File(cacheDir, "extracted_\${System.currentTimeMillis()}.wav")
+        val outputFile = File(cacheDir, "extracted_${System.currentTimeMillis()}.wav")
         val command = buildString {
             append("-y ")
             append("-i \"$videoPath\" ")
@@ -52,7 +52,7 @@ class AudioExtractor @Inject constructor(
         sampleRate: Int = 16000,
         channels: Int = 1
     ): Result<String> {
-        val outputFile = File(cacheDir, "converted_\${System.currentTimeMillis()}.wav")
+        val outputFile = File(cacheDir, "converted_${System.currentTimeMillis()}.wav")
         val command = buildString {
             append("-y ")
             append("-i \"$inputPath\" ")
@@ -72,7 +72,7 @@ class AudioExtractor @Inject constructor(
         inputPath: String,
         targetSampleRate: Int
     ): Result<String> {
-        val outputFile = File(cacheDir, "resampled_\${System.currentTimeMillis()}.wav")
+        val outputFile = File(cacheDir, "resampled_${System.currentTimeMillis()}.wav")
         val command = buildString {
             append("-y ")
             append("-i \"$inputPath\" ")
@@ -88,7 +88,7 @@ class AudioExtractor @Inject constructor(
      * Convert stereo audio to mono.
      */
     suspend fun toMono(inputPath: String): Result<String> {
-        val outputFile = File(cacheDir, "mono_\${System.currentTimeMillis()}.wav")
+        val outputFile = File(cacheDir, "mono_${System.currentTimeMillis()}.wav")
         val command = buildString {
             append("-y ")
             append("-i \"$inputPath\" ")
@@ -108,7 +108,7 @@ class AudioExtractor @Inject constructor(
         startMs: Long,
         endMs: Long
     ): Result<String> {
-        val outputFile = File(cacheDir, "trimmed_\${System.currentTimeMillis()}.wav")
+        val outputFile = File(cacheDir, "trimmed_${System.currentTimeMillis()}.wav")
         val startTime = formatTime(startMs)
         val duration = formatTime(endMs - startMs)
         val command = buildString {
@@ -130,10 +130,10 @@ class AudioExtractor @Inject constructor(
         if (inputPaths.isEmpty()) return Result.failure(Exception("No input files"))
         if (inputPaths.size == 1) return Result.success(inputPaths[0])
 
-        val listFile = File(cacheDir, "merge_list_\${System.currentTimeMillis()}.txt")
-        listFile.writeText(inputPaths.joinToString("\n") { "file '\${it}'" })
+        val listFile = File(cacheDir, "merge_list_${System.currentTimeMillis()}.txt")
+        listFile.writeText(inputPaths.joinToString("\n") { "file '${it}'" })
 
-        val outputFile = File(cacheDir, "merged_\${System.currentTimeMillis()}.wav")
+        val outputFile = File(cacheDir, "merged_${System.currentTimeMillis()}.wav")
         val command = buildString {
             append("-y ")
             append("-f concat -safe 0 ")
@@ -155,7 +155,7 @@ class AudioExtractor @Inject constructor(
         inputPath: String,
         targetLufs: Float = -16f
     ): Result<String> {
-        val outputFile = File(cacheDir, "normalized_\${System.currentTimeMillis()}.wav")
+        val outputFile = File(cacheDir, "normalized_${System.currentTimeMillis()}.wav")
         val command = buildString {
             append("-y ")
             append("-i \"$inputPath\" ")
@@ -175,7 +175,7 @@ class AudioExtractor @Inject constructor(
         bitrate: Int,
         outputFormat: String = "mp3"
     ): Result<String> {
-        val outputFile = File(cacheDir, "bitrate_\${System.currentTimeMillis()}.$outputFormat")
+        val outputFile = File(cacheDir, "bitrate_${System.currentTimeMillis()}.$outputFormat")
         val command = buildString {
             append("-y ")
             append("-i \"$inputPath\" ")
@@ -196,7 +196,7 @@ class AudioExtractor @Inject constructor(
         channels: Int? = null,
         bitrate: Int? = null
     ): Result<String> {
-        val outputFile = File(cacheDir, "converted_\${System.currentTimeMillis()}.$outputFormat")
+        val outputFile = File(cacheDir, "converted_${System.currentTimeMillis()}.$outputFormat")
         val command = buildString {
             append("-y ")
             append("-i \"$inputPath\" ")

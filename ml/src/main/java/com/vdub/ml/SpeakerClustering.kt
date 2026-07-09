@@ -92,7 +92,7 @@ class SpeakerClustering @Inject constructor() {
             clusters.removeAt(bestI)
             clusters.add(merged)
 
-            Log.d(TAG, "Merged clusters \${bestI} and \${bestJ} (similarity=\${String.format("%.3f", bestSimilarity)}), remaining=\${clusters.size}")
+            Log.d(TAG, "Merged clusters ${bestI} and ${bestJ} (similarity=${"%.3f".format(bestSimilarity)}), remaining=${clusters.size}")
         }
 
         // Assign final cluster IDs and create speaker labels
@@ -103,23 +103,23 @@ class SpeakerClustering @Inject constructor() {
             if (clusterIndex >= 0) {
                 segment.copy(
                     clusterId = clusterIndex,
-                    speakerLabel = "Speaker \${clusterIndex + 1}"
+                    speakerLabel = "Speaker ${clusterIndex + 1}"
                 )
             } else {
                 // Segments without embeddings get assigned to nearest cluster
                 val nearestCluster = findNearestCluster(segment, clusters)
                 segment.copy(
                     clusterId = nearestCluster,
-                    speakerLabel = "Speaker \${nearestCluster + 1}"
+                    speakerLabel = "Speaker ${nearestCluster + 1}"
                 )
             }
         }
 
         val speakers = clusters.mapIndexed { index, cluster ->
-            createSpeaker(index, "Speaker \${index + 1}", updatedSegments.filter { it.clusterId == index })
+            createSpeaker(index, "Speaker ${index + 1}", updatedSegments.filter { it.clusterId == index })
         }
 
-        Log.i(TAG, "Clustering complete: \${clusters.size} speakers from \${segments.size} segments")
+        Log.i(TAG, "Clustering complete: ${clusters.size} speakers from ${segments.size} segments")
         return Pair(updatedSegments, speakers)
     }
 

@@ -90,7 +90,7 @@ class ModelDownloader @Inject constructor(
 
     private suspend fun performDownload(modelInfo: ModelInfo) {
         val targetFile = File(modelsDir, modelInfo.localPath)
-        val tempFile = File("\${targetFile.absolutePath}$TEMP_SUFFIX")
+        val tempFile = File("${targetFile.absolutePath}$TEMP_SUFFIX")
 
         updateState(modelInfo.id) { it.copy(status = DownloadStatus.DOWNLOADING, progress = 0f) }
 
@@ -248,7 +248,7 @@ class ModelDownloader @Inject constructor(
      * Retry a failed download.
      */
     fun retryDownload(modelInfo: ModelInfo) {
-        val tempFile = File(modelsDir, "\${modelInfo.localPath}$TEMP_SUFFIX")
+        val tempFile = File(modelsDir, "${modelInfo.localPath}$TEMP_SUFFIX")
         if (tempFile.exists()) tempFile.delete()
         updateState(modelInfo.id) { it.copy(status = DownloadStatus.IDLE, error = null) }
         downloadModel(modelInfo)

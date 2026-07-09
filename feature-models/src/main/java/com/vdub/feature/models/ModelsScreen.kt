@@ -17,6 +17,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.vdub.core.util.formatFileSize
 import com.vdub.domain.entity.DownloadStatus
 import com.vdub.domain.entity.ModelCategory
+import com.vdub.domain.entity.ModelDownloadState
 import com.vdub.domain.entity.ModelInfo
 import com.vdub.domain.entity.ModelType
 

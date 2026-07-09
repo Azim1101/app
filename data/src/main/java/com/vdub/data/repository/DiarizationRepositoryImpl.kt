@@ -68,7 +68,7 @@ class DiarizationRepositoryImpl @Inject constructor(
             _currentResult.value = AnalysisResult(
                 fileName = file.name,
                 filePath = filePath,
-                fileSize = file.size,
+                fileSize = file.length(),
                 mediaType = mediaType,
                 status = AnalysisStatus.PENDING
             )

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VDub</string>
+    <string name="home_title">VDub</string>
+    <string name="home_subtitle">Speaker Diarization</string>
+    <string name="upload_button">Upload Media</string>
+    <string name="download_models">Download Models</string>
+    <string name="history">History</string>
+    <string name="settings">Settings</string>
+    <string name="processing">Processing</string>
+    <string name="models">Models</string>
+    <string name="cancel">Cancel</string>
+    <string name="pause">Pause</string>
+    <string name="resume">Resume</string>
+    <string name="export">Export</string>
+    <string name="share">Share</string>
+    <string name="delete">Delete</string>
+    <string name="rename">Rename</string>
+    <string name="merge">Merge</string>
+    <string name="error">Error</string>
+    <string name="success">Success</string>
+    <string name="close">Close</string>
+    <string name="ok">OK</string>
+</resources>

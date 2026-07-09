@@ -3,14 +3,13 @@ name: 🚀 Build VDub APK
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     name: Build Debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: 📥 Checkout code
@@ -28,25 +27,23 @@ jobs:
       - name: ✅ Accept Android Licenses
         run: yes | sdkmanager --licenses 2>/dev/null || true
 
-      - name: 📦 Cache Gradle packages
+      - name: 📦 Cache Gradle
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-${{ hashFiles('**/*.gradle.kts') }}
           restore-keys: gradle-
 
       - name: 🔧 Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.10.2
 
       - name: 🔑 Grant execute permission
         run: chmod +x gradlew || true
 
       - name: 🏗️ Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 || { echo "Build failed"; exit 1; }
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: 📤 Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -56,12 +53,11 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
-      - name: 📤 Upload Build Logs on Failure
+      - name: 📤 Upload Build Reports on Failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-reports
           path: |
-            app/build/reports/**
-            **/build/tmp/**/output.txt
+            **/build/reports/**
           retention-days: 7

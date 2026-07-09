@@ -33,7 +33,7 @@ dependencies {
     implementation("com.google.dagger:hilt-android:${rootProject.extra["hilt_version"]}")
     kapt("com.google.dagger:hilt-android-compiler:${rootProject.extra["hilt_version"]}")
 
-    implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
+    implementation("com.arthenica:ffmpeg-kit-full:6.0")
     implementation("androidx.media3:media3-exoplayer:${rootProject.extra["media3_version"]}")
     implementation("androidx.media3:media3-ui:${rootProject.extra["media3_version"]}")
     implementation("androidx.media3:media3-common:${rootProject.extra["media3_version"]}")

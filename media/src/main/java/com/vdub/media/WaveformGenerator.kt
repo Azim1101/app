@@ -5,6 +5,8 @@ import com.vdub.domain.entity.WaveformData
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -33,74 +35,66 @@ class WaveformGenerator @Inject constructor(
         try {
             // Parse WAV header
             raf.seek(22)
-            val channels = raf.readUnsignedByte() or (raf.readUnsignedByte() shl 8)
+            val channels = readLittleEndianUShort(raf)
             raf.seek(24)
-            val sampleRate = raf.readUnsignedByte() or
-                    (raf.readUnsignedByte() shl 8) or
-                    (raf.readUnsignedByte() shl 16) or
-                    (raf.readUnsignedByte() shl 24)
+            val sampleRate = readLittleEndianUInt(raf).toInt()
             raf.seek(34)
-            val bitsPerSample = raf.readUnsignedByte() or (raf.readUnsignedByte() shl 8)
+            val bitsPerSample = readLittleEndianUShort(raf)
+
+            // Find data chunk
+            raf.seek(12)
+            var dataOffset = 0L
+            var dataSize = 0L
+            var foundData = false
+            for (attempt in 0 until 20) {
+                val chunkId = ByteArray(4)
+                raf.read(chunkId)
+                val chunkSize = readLittleEndianUInt(raf)
+                if (String(chunkId) == "data") {
+                    dataOffset = raf.filePointer
+                    dataSize = chunkSize
+                    foundData = true
+                    break
+                }
+                raf.skipBytes(chunkSize.toInt())
+            }
+            if (!foundData) {
+                dataOffset = WAV_HEADER_SIZE.toLong()
+                dataSize = file.length() - WAV_HEADER_SIZE
+            }
 
             val bytesPerSample = bitsPerSample / 8
-            val totalFrames = ((file.length() - WAV_HEADER_SIZE) / (bytesPerSample * channels)).toInt()
-            val durationMs = (totalFrames.toLong() * 1000) / sampleRate
+            val totalFrames = (dataSize / (bytesPerSample * channels)).toInt()
+            val durationMs = if (sampleRate > 0) (totalFrames.toLong() * 1000) / sampleRate else 0L
 
             // Calculate downsampling
-            val totalSamples = totalFrames
-            val targetSamples = minOf(TARGET_SAMPLES, totalSamples)
-            val samplesPerPoint = totalSamples / targetSamples
+            val targetSamples = minOf(TARGET_SAMPLES, totalFrames)
+            val samplesPerPoint = if (totalSamples > 0) totalFrames / targetSamples else 1
 
             val samples = mutableListOf<Float>()
             val peaks = mutableListOf<Float>()
-
-            raf.seek(WAV_HEADER_SIZE.toLong())
-
-            // Read all samples for downsampling
             var maxAmplitude = 0f
+
             for (i in 0 until targetSamples) {
-                var max = 0f
-                var min = 0f
                 var sum = 0f
+                var peak = 0f
 
                 for (j in 0 until samplesPerPoint) {
                     val frameIndex = i * samplesPerPoint + j
                     if (frameIndex >= totalFrames) break
 
-                    val offset = WAV_HEADER_SIZE + (frameIndex * bytesPerSample * channels).toLong()
+                    val offset = dataOffset + (frameIndex * bytesPerSample * channels).toLong()
                     raf.seek(offset)
 
-                    val sample = when (bitsPerSample) {
-                        16 -> {
-                            val lo = raf.readUnsignedByte()
-                            val hi = raf.readByte()
-                            ((hi shl 8) or lo) / 32768f
-                        }
-                        8 -> (raf.readUnsignedByte() - 128) / 128f
-                        24 -> {
-                            val b0 = raf.readUnsignedByte()
-                            val b1 = raf.readUnsignedByte()
-                            val b2 = raf.readByte()
-                            ((b2 shl 16) or (b1 shl 8) or b0) / 8388608f
-                        }
-                        32 -> {
-                            val b0 = raf.readUnsignedByte()
-                            val b1 = raf.readUnsignedByte()
-                            val b2 = raf.readUnsignedByte()
-                            val b3 = raf.readByte()
-                            ((b3 shl 24) or (b2 shl 16) or (b1 shl 8) or b0) / 2147483648f
-                        }
-                        else -> 0f
-                    }
-
-                    if (sample > max) max = sample
-                    if (sample < min) min = sample
+                    val sample = readSample(raf, bitsPerSample)
                     sum += sample
+                    val absSample = kotlin.math.abs(sample)
+                    if (absSample > peak) peak = absSample
                 }
 
                 val avg = if (samplesPerPoint > 0) sum / samplesPerPoint else 0f
                 samples.add(avg)
-                peaks.add(maxOf(kotlin.math.abs(max), kotlin.math.abs(min)))
+                peaks.add(peak)
                 if (kotlin.math.abs(avg) > maxAmplitude) maxAmplitude = kotlin.math.abs(avg)
             }
 
@@ -127,6 +121,58 @@ class WaveformGenerator @Inject constructor(
     }
 
     /**
+     * Read a single audio sample from WAV file.
+     */
+    private fun readSample(raf: RandomAccessFile, bitsPerSample: Int): Float {
+        return when (bitsPerSample) {
+            16 -> {
+                val b0 = raf.readUnsignedByte()
+                val b1 = raf.readByte().toInt()
+                val raw = (b1 shl 8) or b0
+                raw / 32768f
+            }
+            8 -> {
+                val raw = raf.readUnsignedByte() - 128
+                raw / 128f
+            }
+            24 -> {
+                val b0 = raf.readUnsignedByte()
+                val b1 = raf.readUnsignedByte()
+                val b2 = raf.readByte().toInt()
+                val raw = (b2 shl 16) or (b1 shl 8) or b0
+                raw / 8388608f
+            }
+            32 -> {
+                val bytes = ByteArray(4)
+                raf.read(bytes)
+                val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+                buf.float
+            }
+            else -> 0f
+        }
+    }
+
+    /**
+     * Read unsigned short (2 bytes, little-endian).
+     */
+    private fun readLittleEndianUShort(raf: RandomAccessFile): Int {
+        val b0 = raf.readUnsignedByte()
+        val b1 = raf.readUnsignedByte()
+        return (b1 shl 8) or b0
+    }
+
+    /**
+     * Read unsigned int (4 bytes, little-endian).
+     */
+    private fun readLittleEndianUInt(raf: RandomAccessFile): Long {
+        val b0 = raf.readUnsignedByte().toLong()
+        val b1 = raf.readUnsignedByte().toLong()
+        val b2 = raf.readUnsignedByte().toLong()
+        val b3 = raf.readUnsignedByte().toLong()
+        return (b3 shl 24) or (b2 shl 16) or (b1 shl 8) or b0
+    }
+
+    /**
      * Generate waveform from raw float array.
      */
     fun generateFromFloatArray(
@@ -134,9 +180,9 @@ class WaveformGenerator @Inject constructor(
         sampleRate: Int
     ): WaveformData {
         val totalSamples = audioData.size
-        val durationMs = (totalSamples.toLong() * 1000) / sampleRate
+        val durationMs = if (sampleRate > 0) (totalSamples.toLong() * 1000) / sampleRate else 0L
         val targetSamples = minOf(TARGET_SAMPLES, totalSamples)
-        val samplesPerPoint = totalSamples / targetSamples
+        val samplesPerPoint = if (totalSamples > 0) totalSamples / targetSamples else 1
 
         val samples = mutableListOf<Float>()
         val peaks = mutableListOf<Float>()

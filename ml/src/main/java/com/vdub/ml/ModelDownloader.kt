@@ -177,13 +177,19 @@ class ModelDownloader @Inject constructor(
         val response = okHttpClient.newCall(request).execute()
         val responseBody = response.body ?: throw Exception("Empty response body")
 
-        val totalBytes = if (response.code == 206) {
-            // Partial content - get total from Content-Range header
+        val totalBytes: Long = if (response.code == 206) {
             val rangeHeader = response.header("Content-Range")
-            val total = rangeHeader?.substringAfter("/")?.toLongOrNull() ?: (existingBytes + responseBody.contentLength())
-            total
+            rangeHeader?.substringAfter("/")?.toLongOrNull() ?: (existingBytes + responseBody.contentLength())
         } else {
             responseBody.contentLength()
+        }
+
+
+
+
+
+
+
         }
 
         updateState(modelInfo.id) {

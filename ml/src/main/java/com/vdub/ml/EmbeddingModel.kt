@@ -33,8 +33,8 @@ class EmbeddingModel @Inject constructor(
     /**
      * Initialize the embedding model.
      */
-    suspend fun initialize(modelPath: String): Result<Unit> = withContext(Dispatchers.Default) {
-        runCatching {
+    suspend fun initialize(modelPath: String): Result<Unit> = withContext(Dispatchers.IO) {
+        kotlin.runCatching {
             val file = File(modelPath)
             require(file.exists()) { "Embedding model not found at $modelPath" }
 
@@ -46,6 +46,7 @@ class EmbeddingModel @Inject constructor(
             }.onFailure { e ->
                 throw e
             }
+            Unit
         }
     }
 
@@ -55,25 +56,23 @@ class EmbeddingModel @Inject constructor(
     suspend fun generateEmbedding(
         audioData: FloatArray,
         sampleRate: Int
-    ): FloatArray = withContext(Dispatchers.Default) {
+    ): FloatArray = withContext(Dispatchers.IO) {
         val sess = session ?: throw IllegalStateException("Embedding model not initialized")
 
-        // Ensure minimum chunk length by padding if necessary
         val samples = if (sampleRate != SAMPLE_RATE) {
             resampleAudio(audioData, sampleRate, SAMPLE_RATE)
         } else {
             audioData
         }
 
-        // Pad short chunks with zeros
-        val minSamples = SAMPLE_RATE / 2 // 0.5 seconds minimum
+        val minSamples = SAMPLE_RATE / 2
         val paddedSamples = if (samples.size < minSamples) {
             samples.copyOf(minSamples)
         } else {
             samples
         }
 
-        // Default input shape: [1, num_samples] for most speaker embedding models
+        // Input shape: [1, num_samples]
         val inputShape = longArrayOf(1, paddedSamples.size.toLong())
 
         val buffer = ByteBuffer.allocateDirect(paddedSamples.size * 4)
@@ -83,35 +82,38 @@ class EmbeddingModel @Inject constructor(
         val inputTensor = OnnxTensor.createTensor(onnxManager.environment, buffer, inputShape)
 
         val results = try {
-            onnxManager.runInference(sess, mapOf(inputName to inputTensor))
+            onnxManager.runInferenceSync(sess, mapOf(inputName to inputTensor))
         } catch (e: Exception) {
-            // If [1, samples] fails, try [1, 1, samples]
+            // Try [1, 1, num_samples] shape
             inputTensor.close()
             val buffer2 = ByteBuffer.allocateDirect(paddedSamples.size * 4)
             buffer2.order(ByteOrder.nativeOrder())
             buffer2.asFloatBuffer().put(paddedSamples)
             val shape2 = longArrayOf(1, 1, paddedSamples.size.toLong())
             val tensor2 = OnnxTensor.createTensor(onnxManager.environment, buffer2, shape2)
-            onnxManager.runInference(sess, mapOf(inputName to tensor2))
+            onnxManager.runInferenceSync(sess, mapOf(inputName to tensor2))
         }
 
         inputTensor.close()
 
-        val outputKey = results.keys.firstOrNull() ?: return@withContext FloatArray(EMBEDDING_DIM)
-        val outputTensor = results[outputKey] ?: return@withContext FloatArray(EMBEDDING_DIM)
+        val outputKey = results.keys.firstOrNull()
+        val outputTensor = if (outputKey != null) results[outputKey] else null
 
-        val embedding = try {
-            val outputBuffer = outputTensor.floatBuffer
-            val arr = FloatArray(minOf(outputBuffer.remaining(), EMBEDDING_DIM * 2))
-            outputBuffer.get(arr)
-            // Take the last EMBEDDING_DIM values (for models with extra outputs)
-            if (arr.size > EMBEDDING_DIM) arr.copyOfRange(arr.size - EMBEDDING_DIM, arr.size) else arr
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to read embedding output", e)
+        val embedding = if (outputTensor != null) {
+            try {
+                val outputBuffer = outputTensor.floatBuffer
+                val arr = FloatArray(minOf(outputBuffer.remaining(), EMBEDDING_DIM * 2))
+                outputBuffer.get(arr)
+                if (arr.size > EMBEDDING_DIM) arr.copyOfRange(arr.size - EMBEDDING_DIM, arr.size) else arr
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to read embedding output", e)
+                FloatArray(EMBEDDING_DIM)
+            }
+        } else {
             FloatArray(EMBEDDING_DIM)
         }
 
-        // L2 normalize the embedding
+        // L2 normalize
         val norm = kotlin.math.sqrt(embedding.fold(0f) { acc, v -> acc + v * v })
         if (norm > 0f) {
             for (i in embedding.indices) {
@@ -132,7 +134,7 @@ class EmbeddingModel @Inject constructor(
         audioData: FloatArray,
         sampleRate: Int,
         segments: List<Segment>
-    ): List<Segment> = withContext(Dispatchers.Default) {
+    ): List<Segment> = withContext(Dispatchers.IO) {
         segments.map { segment ->
             val startSample = ((segment.startTimeMs * sampleRate) / 1000).toInt().coerceAtLeast(0)
             val endSample = ((segment.endTimeMs * sampleRate) / 1000).toInt().coerceAtMost(audioData.size)

@@ -69,7 +69,7 @@ class WaveformGenerator @Inject constructor(
 
             // Calculate downsampling
             val targetSamples = minOf(TARGET_SAMPLES, totalFrames)
-            val samplesPerPoint = if (totalSamples > 0) totalFrames / targetSamples else 1
+            val samplesPerPoint = if (totalFrames > 0) totalFrames / targetSamples else 1
 
             val samples = mutableListOf<Float>()
             val peaks = mutableListOf<Float>()

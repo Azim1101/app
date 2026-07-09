@@ -19,3 +19,4 @@ out/
 .navigation/
 captures/
 *.hprof
+.idea/

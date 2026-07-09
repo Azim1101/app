@@ -25,6 +25,9 @@ jobs:
       - name: 🤖 Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: ✅ Accept Android Licenses
+        run: yes | sdkmanager --licenses 2>/dev/null || true
+
       - name: 📦 Cache Gradle packages
         uses: actions/cache@v4
         with:
@@ -34,22 +37,16 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-      - name: 🔧 Generate Gradle Wrapper
-        run: |
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Gradle wrapper JAR not found, generating..."
-            # Use gradle init to create wrapper
-            gradle wrapper --gradle-version 8.10.2
-          fi
-          chmod +x gradlew
+      - name: 🔧 Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: 🔑 Grant execute permission
+        run: chmod +x gradlew || true
 
       - name: 🏗️ Build Debug APK
-        run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 || {
-            echo "=== Build failed, checking for common issues ==="
-            ./gradlew assembleDebug --no-daemon --stacktrace --info 2>&1 | tail -100
-            exit 1
-          }
+        run: ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 || { echo "Build failed"; exit 1; }
 
       - name: 📤 Upload Debug APK
         uses: actions/upload-artifact@v4

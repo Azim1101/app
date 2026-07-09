@@ -70,7 +70,7 @@ fun SettingsScreen(
 
             SliderSetting(
                 title = "Thread Count",
-                value = settings.threadCount,
+                value = settings.threadCount.toFloat(),
                 range = 1f..8f,
                 steps = 6,
                 onValueChange = { viewModel.updateThreadCount(it.toInt()) },

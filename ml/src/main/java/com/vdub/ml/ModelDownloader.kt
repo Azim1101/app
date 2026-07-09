@@ -7,16 +7,21 @@ import com.vdub.domain.entity.ModelDownloadState
 import com.vdub.domain.entity.ModelInfo
 import com.vdub.domain.entity.ModelRegistry
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
-import java.io.FileOutputStream
 import java.io.RandomAccessFile
-import java.net.HttpURLConnection
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -99,7 +104,6 @@ class ModelDownloader @Inject constructor(
 
             val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
 
-            // Try primary URL, then mirrors
             val urls = listOf(modelInfo.downloadUrl) + modelInfo.mirrorUrls
             var success = false
             var lastError: Exception? = null
@@ -112,13 +116,11 @@ class ModelDownloader @Inject constructor(
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to download from $url: ${e.message}")
                     lastError = e
-                    continue
                 }
             }
 
             if (!success) throw lastError ?: Exception("Download failed")
 
-            // Verify SHA256 if available
             if (modelInfo.sha256.isNotEmpty() && modelInfo.sha256 != "auto") {
                 updateState(modelInfo.id) { it.copy(status = DownloadStatus.VERIFYING) }
                 val actualHash = calculateSHA256(tempFile)
@@ -126,32 +128,30 @@ class ModelDownloader @Inject constructor(
                     Log.i(TAG, "SHA256 verified for ${modelInfo.id}")
                 } else {
                     Log.w(TAG, "SHA256 mismatch for ${modelInfo.id}: expected=${modelInfo.sha256}, actual=$actualHash")
-                    // Don't fail on hash mismatch for auto hashes
-                    if (modelInfo.sha256 != "auto") {
-                        updateState(modelInfo.id) {
-                            it.copy(status = DownloadStatus.VERIFY_FAILED, error = "SHA256 verification failed")
-                        }
-                        tempFile.delete()
-                        return
+                    updateState(modelInfo.id) {
+                        it.copy(status = DownloadStatus.VERIFY_FAILED, error = "SHA256 verification failed")
                     }
+                    tempFile.delete()
+                    return
                 }
             }
 
-            // Move temp file to final location
             if (targetFile.exists()) targetFile.delete()
-            tempFile.renameTo(targetFile)
+            require(tempFile.renameTo(targetFile)) {
+                "Failed to move downloaded model to ${targetFile.absolutePath}"
+            }
 
             updateState(modelInfo.id) {
                 it.copy(
                     status = DownloadStatus.COMPLETED,
                     progress = 1f,
                     downloadedBytes = targetFile.length(),
-                    totalBytes = targetFile.length()
+                    totalBytes = targetFile.length(),
+                    error = null
                 )
             }
 
             Log.i(TAG, "Model ${modelInfo.id} downloaded successfully to ${targetFile.absolutePath}")
-
         } catch (e: CancellationException) {
             updateState(modelInfo.id) { it.copy(status = DownloadStatus.PAUSED) }
             throw e
@@ -171,67 +171,80 @@ class ModelDownloader @Inject constructor(
     ) {
         val request = Request.Builder()
             .url(url)
-            .apply { if (existingBytes > 0) header("Range", "bytes=$existingBytes-") }
+            .apply {
+                if (existingBytes > 0) {
+                    header("Range", "bytes=$existingBytes-")
+                }
+            }
             .build()
 
-        val response = okHttpClient.newCall(request).execute()
-        val responseBody = response.body ?: throw Exception("Empty response body")
+        okHttpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful && response.code != 206) {
+                throw IllegalStateException("Download request failed with HTTP ${response.code}")
+            }
 
-        val totalBytes: Long = if (response.code == 206) {
-            val rangeHeader = response.header("Content-Range")
-            rangeHeader?.substringAfter("/")?.toLongOrNull() ?: (existingBytes + responseBody.contentLength())
-        } else {
-            responseBody.contentLength()
-        }
+            val responseBody = response.body ?: throw IllegalStateException("Empty response body")
+            val totalBytes = if (response.code == 206) {
+                val rangeHeader = response.header("Content-Range")
+                rangeHeader?.substringAfter("/")?.toLongOrNull()
+                    ?: (existingBytes + responseBody.contentLength())
+            } else {
+                responseBody.contentLength()
+            }
 
+            updateState(modelInfo.id) {
+                it.copy(totalBytes = totalBytes, downloadedBytes = existingBytes)
+            }
 
+            RandomAccessFile(outputFile, "rw").use { raf ->
+                raf.seek(existingBytes)
 
+                responseBody.byteStream().use { inputStream ->
+                    val buffer = ByteArray(BUFFER_SIZE)
+                    var lastUpdateTime = System.currentTimeMillis()
+                    var bytesRead: Int
+                    var totalRead = existingBytes
 
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        ensureActive()
 
+                        raf.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
 
+                        val now = System.currentTimeMillis()
+                        if (now - lastUpdateTime >= PROGRESS_UPDATE_INTERVAL_MS) {
+                            val progress = if (totalBytes > 0) {
+                                totalRead.toFloat() / totalBytes.toFloat()
+                            } else {
+                                0f
+                            }
+                            val elapsed = (now - lastUpdateTime).coerceAtLeast(1)
+                            val speed = (bytesRead * 1000L) / elapsed
 
-        }
-
-        updateState(modelInfo.id) {
-            it.copy(totalBytes = total, downloadedBytes = existingBytes)
-        }
-
-        val raf = RandomAccessFile(outputFile, "rw")
-        raf.seek(existingBytes)
-
-        val inputStream = responseBody.byteStream()
-        val buffer = ByteArray(BUFFER_SIZE)
-        var lastUpdateTime = System.currentTimeMillis()
-
-        try {
-            var bytesRead: Int
-            var totalRead = existingBytes
-
-            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                ensureActive()
-
-                raf.write(buffer, 0, bytesRead)
-                totalRead += bytesRead
-
-                val now = System.currentTimeMillis()
-                if (now - lastUpdateTime >= PROGRESS_UPDATE_INTERVAL_MS) {
-                    val progress = if (totalBytes > 0) totalRead.toFloat() / totalBytes else 0f
-                    val speed = (bytesRead * 1000L) / (now - lastUpdateTime + 1)
+                            updateState(modelInfo.id) {
+                                it.copy(
+                                    progress = progress,
+                                    downloadedBytes = totalRead,
+                                    totalBytes = totalBytes,
+                                    speed = speed,
+                                    error = null
+                                )
+                            }
+                            lastUpdateTime = now
+                        }
+                    }
 
                     updateState(modelInfo.id) {
                         it.copy(
-                            progress = progress,
+                            progress = if (totalBytes > 0) totalRead.toFloat() / totalBytes.toFloat() else 1f,
                             downloadedBytes = totalRead,
-                            speed = speed
+                            totalBytes = totalBytes,
+                            speed = 0,
+                            error = null
                         )
                     }
-                    lastUpdateTime = now
                 }
             }
-        } finally {
-            inputStream.close()
-            raf.close()
-            response.close()
         }
     }
 

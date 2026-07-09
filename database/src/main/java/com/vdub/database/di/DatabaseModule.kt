@@ -2,6 +2,7 @@ package com.vdub.database.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.RoomDatabase
 import com.vdub.database.VDb
 import com.vdub.database.dao.AnalysisDao
 import com.vdub.database.dao.SegmentDao
@@ -26,7 +27,7 @@ object DatabaseModule {
             VDb.DATABASE_NAME
         )
             .fallbackToDestructiveMigration()
-            .setJournalMode(JournalMode.AUTOMATIC)
+            .setJournalMode(RoomDatabase.JournalMode.AUTOMATIC)
             .build()
     }
 

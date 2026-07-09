@@ -27,17 +27,29 @@ jobs:
       - name: ✅ Accept Android Licenses
         run: yes | sdkmanager --licenses 2>/dev/null || true
 
-      - name: 🔧 Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: 📦 Cache Gradle
+        uses: actions/cache@v4
         with:
-          gradle-version: 8.10.2
-          validate-wrappers: false
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts') }}
+          restore-keys: gradle-
 
-      - name: 🔑 Grant execute permission
-        run: chmod +x gradlew || true
+      - name: 🔧 Install Gradle 8.10.2
+        run: |
+          if [ ! -d ~/.gradle/wrapper/dists/gradle-8.10.2-bin ]; then
+            cd /tmp
+            curl -sL https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -o gradle.zip
+            unzip -q gradle.zip
+            sudo mv gradle-8.10.2 /opt/gradle
+            echo "/opt/gradle/bin" >> $GITHUB_PATH
+          fi
 
       - name: 🏗️ Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          cd $GITHUB_WORKSPACE
+          gradle assembleDebug --no-daemon --stacktrace
 
       - name: 📤 Upload Debug APK
         uses: actions/upload-artifact@v4

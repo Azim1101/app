@@ -60,12 +60,18 @@ fun HomeScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "VDub",
-                        style = MaterialTheme.typography.headlineMedium
-                    )
-                },
-                subtitle = { Text("Speaker Diarization") }
+                    Column {
+                        Text(
+                            text = "VDub",
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                        Text(
+                            text = "Speaker Diarization",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
